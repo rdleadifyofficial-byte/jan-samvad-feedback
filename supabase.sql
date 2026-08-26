@@ -8,10 +8,31 @@ create table if not exists public.feedback (
   message text not null,
   consent boolean not null default false,
   status text not null default 'new',
+  photo_url text,
+  photo_path text,
   created_at timestamptz not null default now()
 );
+
+-- Safe to run when the feedback table already exists.
+alter table public.feedback add column if not exists photo_url text;
+alter table public.feedback add column if not exists photo_path text;
 
 alter table public.feedback enable row level security;
 
 -- No public table policies are required. The website writes and reads only
 -- through protected server routes using SUPABASE_SERVICE_ROLE_KEY.
+
+-- Private photo bucket. There are deliberately no public storage policies:
+-- uploads use the server-side service role and admins receive short-lived URLs.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'feedback-photos',
+  'feedback-photos',
+  false,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update set
+  public = false,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
